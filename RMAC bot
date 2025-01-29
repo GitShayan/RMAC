@@ -1,0 +1,996 @@
+using cAlgo.API;
+using cAlgo.API.Requests;
+using cAlgo.API.Indicators;
+using cAlgo.API.Internals;
+using System;
+
+namespace cAlgo.Robots
+{
+    [Robot(TimeZone = TimeZones.EasternStandardTime, AccessRights = AccessRights.None)]
+    public class AdvancedTradingBot : Robot
+    {
+        [Parameter("Enable Main Buy/Sell Condition", DefaultValue = true)]
+        public bool EnableMainBuySellCondition { get; set; }
+
+        [Parameter("Risk Percentage", DefaultValue = 1.0)]
+        public double RiskPercentage { get; set; }
+
+        [Parameter("Take Profit Multiplier", DefaultValue = 1.0)]
+        public double TakeProfitMultiplier { get; set; }
+
+        [Parameter("Enable Buy/Sell Condition 2", DefaultValue = true)]
+        public bool EnableBuySellCondition2 { get; set; }
+      
+        [Parameter("Risk Percentage2", DefaultValue = 1.0)]
+        public double RiskPercentage2 { get; set; }
+
+        [Parameter("Take Profit Multiplier2", DefaultValue = 1.0)]
+        public double TakeProfitMultiplier2 { get; set; }
+
+
+        [Parameter("Prevention MACD Level", DefaultValue = 20)]
+        public double PreventionMACDLevel { get; set; }
+
+        [Parameter("RSI Period", DefaultValue = 14)]
+        public int RsiPeriod { get; set; }
+
+        [Parameter("RSI Overbought Level", DefaultValue = 68)]
+        public double RsiOverbought { get; set; }
+
+        [Parameter("RSI Oversold Level", DefaultValue = 32)]
+        public double RsiOversold { get; set; }
+
+        [Parameter("MACD Long Cycle", DefaultValue = 13)]
+        public int MacdLongCycle { get; set; }
+
+        [Parameter("MACD Short Cycle", DefaultValue = 6)]
+        public int MacdShortCycle { get; set; }
+
+        [Parameter("MACD Signal Period", DefaultValue = 9)]
+        public int MacdSignalPeriod { get; set; }
+      
+        [Parameter("Dynamic Stop Loss", DefaultValue = false)]
+        public bool EnableDynamicStopLoss { get; set; }
+
+        [Parameter("Enable RSI Trade Prevention", DefaultValue = false)]
+        public bool EnableRsiTradePrevention { get; set; }
+
+        [Parameter("Active Hours Start Time", DefaultValue = "09:00")]
+        public string ActiveStartTime { get; set; }
+
+        [Parameter("Active Hours End Time", DefaultValue = "15:00")]
+        public string ActiveEndTime { get; set; }
+
+        [Parameter("Close Active Position Time", DefaultValue = "15:59")]
+        public string CloseActivePositionTime { get; set; }
+
+        [Parameter("Open Position Maximum Loss", DefaultValue = 200)]
+        public double MaxLossPerPosition { get; set; }
+
+        private TimeSpan _parsedActiveStartTime;
+        private TimeSpan _parsedActiveEndTime;
+        private TimeSpan _parsedClosePositionTime;
+
+        private RelativeStrengthIndex _rsi;
+        private MacdCrossOver _macdCrossOver;
+        private Bar _baseBuyCandle;
+        private Bar _baseSellCandle;
+        private string _currentState;
+
+        private double? _stopLossPriceBuy;
+        private double? _stopLossPriceSell;
+        private bool _buyDisabled;
+        private bool _sellDisabled;
+        private DateTime _lastResetDate;
+        private DateTime _lastRsiPreventionStart = DateTime.MinValue;
+      
+
+        private bool _sellDisabledToday = false;
+        private bool _buyDisabledToday = false;
+
+        private DateTime _lastRsiBelowOversold = DateTime.MinValue;
+        private DateTime _lastRsiAboveOverbought = DateTime.MinValue;
+
+        private bool _preventNewBuy = false;
+        private bool _preventNewSell = false;
+
+        private Bar? _baseCandleBuyCondition2;
+        private Bar? _baseCandleSellCondition2;
+        private bool _buyCondition2Triggered = false;
+        private bool _sellCondition2Triggered = false;
+        private DateTime _buyCondition2Start;
+        private DateTime _sellCondition2Start;
+        private bool _macdBuyConditionValid = false;
+        private bool _macdSellConditionValid = false;
+        private bool _outsideActiveHoursLogged = false;
+        private DateTime _lastProcessedBarTime = DateTime.MinValue;
+      
+        private bool _buyCondition2Executed = false;
+        private bool _sellCondition2Executed = false;
+        private int _buyCondition2ExecutedBarIndex = -1;
+        private int _sellCondition2ExecutedBarIndex = -1;
+
+        private bool _hasLoggedOutsideActiveHours = false;
+        private bool _hasLoggedClosePositions = false;
+        private bool _hasLoggedActiveHoursStart = false;
+
+        private DateTime _lastRsiAboveOverboughtStart = DateTime.MinValue;
+        private DateTime _lastRsiBelowOversoldStart = DateTime.MinValue;
+        private bool _rsiAboveOverboughtConfirmed = false;
+        private bool _rsiBelowOversoldConfirmed = false;
+        private DateTime _sellPreventionEndTime = DateTime.MinValue;
+        private DateTime _buyPreventionEndTime = DateTime.MinValue;
+     
+
+
+        protected override void OnStart()
+        {
+            try
+            {
+                _parsedActiveStartTime = TimeSpan.Parse(ActiveStartTime);
+                _parsedActiveEndTime = TimeSpan.Parse(ActiveEndTime);
+                _parsedClosePositionTime = TimeSpan.Parse(CloseActivePositionTime);
+            }
+            catch (Exception ex)
+            {
+                Print("Error parsing time parameters: " + ex.Message);
+                Stop();
+                return;
+            }
+
+            _rsi = Indicators.RelativeStrengthIndex(Bars.ClosePrices, RsiPeriod);
+            _macdCrossOver = Indicators.MacdCrossOver(MacdLongCycle, MacdShortCycle, MacdSignalPeriod);
+
+            Print("Robot started with TimeZone: Eastern Standard Time.");
+            _lastResetDate = Server.Time.Date;
+        }
+
+        protected override void OnTick()
+        {
+            try
+            {
+                // Ensure maximum loss conditions are checked on every tick
+                CheckMaximumLossConditions();
+
+                // Ensure trade triggers are checked only on new bars
+                if (Bars.OpenTimes.Last(1) > _lastProcessedBarTime)
+                {
+                    _lastProcessedBarTime = Bars.OpenTimes.Last(1);
+
+                    if (EnableBuySellCondition2)
+                    {
+                        CheckBuyCondition2AndSellCondition2();
+                    }
+                }
+
+                // Check trade execution conditions continuously
+                if (EnableBuySellCondition2)
+                {
+                    CheckTradeTriggersCondition2();
+                }
+            }
+            catch (Exception ex)
+            {
+                Print($"Error in OnTick: {ex.GetType().Name} - {ex.Message}");
+            }
+        }
+
+
+        protected override void OnBar()
+        {
+            try
+            {
+                ResetDailyFlagsIfNewDay();
+                CheckTradePreventionConditions();
+
+                if (EnableBuySellCondition2)
+                {
+                    CheckBuyCondition2AndSellCondition2();
+                }
+
+                if (EnableRsiTradePrevention)
+                {
+                    CheckRsiTradePrevention();
+                }
+
+                // Close all positions at the defined close time
+                if (Server.Time.TimeOfDay >= _parsedClosePositionTime)
+                {
+                    if (!_hasLoggedClosePositions)
+                    {
+                        Print("Closing all positions at defined Close Position Time.");
+                        _hasLoggedClosePositions = true;
+                    }
+                    CloseAllPositions();
+                    return;
+                }
+                else
+                {
+                    _hasLoggedClosePositions = false; // Reset flag when market is open
+                }
+
+                // Log "Outside active trading hours" only once
+                if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
+                {
+                    if (!_hasLoggedOutsideActiveHours)
+                    {
+                        Print("Outside active trading hours.");
+                        _hasLoggedOutsideActiveHours = true;
+                        _hasLoggedActiveHoursStart = false; // Reset for next active period
+                    }
+                    return;
+                }
+                else
+                {
+                    _hasLoggedOutsideActiveHours = false; // Reset flag when market is within active hours
+                }
+
+                // Log "Active trading hours started" only once
+                if (!_hasLoggedActiveHoursStart)
+                {
+                    Print("Active trading hours started.");
+                    _hasLoggedActiveHoursStart = true;
+                }
+
+                CheckStopLossConditions();
+                if (EnableDynamicStopLoss)
+                {
+                    AdjustStopLossAfterCandleClose();
+                }
+                if (_buyDisabledToday && _sellDisabledToday)
+                {
+                    Print("Daily trading limits reached. Skipping new trade evaluation.");
+                    return;
+                }
+
+                if (EnableMainBuySellCondition)
+                {
+                    switch (_currentState)
+                    {
+                        case null:
+                            HandleMainConditions();
+                            break;
+                        case "AwaitingFirstCandleBuy":
+                            CheckFirstCandleAfterBase(_baseBuyCandle, "Buy");
+                            break;
+                        case "AwaitingSecondCandleBuy":
+                            CheckSecondCandleAfterBase(_baseBuyCandle, "Buy");
+                            break;
+                        case "AwaitingFirstCandleSell":
+                            CheckFirstCandleAfterBase(_baseSellCandle, "Sell");
+                            break;
+                        case "AwaitingSecondCandleSell":
+                            CheckSecondCandleAfterBase(_baseSellCandle, "Sell");
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print($"Error in OnBar: {ex.GetType().Name} - {ex.Message}");
+            }
+        }
+
+
+        private void ResetDailyFlagsIfNewDay()
+        {
+            if (_lastResetDate != Server.Time.Date)
+            {
+                // Resetting flags for Main Buy/Sell Conditions
+                _buyDisabled = false;
+                _sellDisabled = false;
+                _sellDisabledToday = false;
+                _buyDisabledToday = false;
+
+                // Resetting flags for Buy/Sell Condition 2
+                _macdBuyConditionValid = false;
+                _macdSellConditionValid = false;
+                _buyCondition2Triggered = false;
+                _sellCondition2Triggered = false;
+                _buyCondition2Executed = false;
+                _sellCondition2Executed = false;
+                _buyCondition2ExecutedBarIndex = -1;
+                _sellCondition2ExecutedBarIndex = -1;
+                _baseCandleBuyCondition2 = null;
+                _baseCandleSellCondition2 = null;
+
+                // Resetting RSI prevention tracking
+                _preventNewBuy = false;
+                _preventNewSell = false;
+                _lastRsiPreventionStart = DateTime.MinValue;
+                _lastRsiBelowOversold = DateTime.MinValue;
+                _lastRsiAboveOverbought = DateTime.MinValue;
+
+                _lastResetDate = Server.Time.Date;
+                Print("Daily flags reset for new trading day.");
+            }
+        }
+
+
+
+        private void CheckTradePreventionConditions()
+        {
+            int rsiOverboughtCount = CountDistinctRsiCrosses(RsiOverbought, above: true);
+            int rsiOversoldCount = CountDistinctRsiCrosses(RsiOversold, above: false);
+            bool macdAboveThreshold = WasMacdLevelCrossed(PreventionMACDLevel);
+            bool macdBelowThreshold = WasMacdLevelCrossed(-PreventionMACDLevel);
+
+            if (!_sellDisabled && rsiOverboughtCount > 3 && macdAboveThreshold)
+            {
+                _sellDisabled = true;
+                _sellDisabledToday = true;  // Track that sell was disabled today
+                Print("Sell positions disabled for the day due to RSI and MACD conditions.");
+            }
+
+            if (!_buyDisabled && rsiOversoldCount > 3 && macdBelowThreshold)
+            {
+                _buyDisabled = true;
+                _buyDisabledToday = true;  // Track that buy was disabled today
+                Print("Buy positions disabled for the day due to RSI and MACD conditions.");
+            }
+
+        }
+
+        private int CountDistinctRsiCrosses(double level, bool above)
+        {
+            int count = 0;
+            bool inThreshold = false;
+
+            for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
+            {
+                double rsiValue = _rsi.Result[i];
+
+                if (above && rsiValue > level)
+                {
+                    if (!inThreshold)
+                    {
+                        count++;
+                        inThreshold = true;
+                    }
+                }
+                else if (!above && rsiValue < level)
+                {
+                    if (!inThreshold)
+                    {
+                        count++;
+                        inThreshold = true;
+                    }
+                }
+                else
+                {
+                    inThreshold = false;
+                }
+            }
+
+            return count;
+        }
+
+        private bool WasMacdLevelCrossed(double level)
+        {
+            for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
+            {
+                if ((level > 0 && _macdCrossOver.MACD[i] >= level) ||
+                    (level < 0 && _macdCrossOver.MACD[i] <= level))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void CheckMaximumLossConditions()
+        {
+            foreach (var position in Positions)
+            {
+                double positionLoss = position.NetProfit;
+                if (positionLoss <= -MaxLossPerPosition)
+                {
+                    ClosePosition(position);
+                    Print($"Closing position {position.Label} due to exceeding maximum loss of ${MaxLossPerPosition}. Current Loss: ${Math.Abs(positionLoss)}");
+                }
+            }
+        }
+
+        private void CheckStopLossConditions()
+        {
+            foreach (var position in Positions)
+            {
+                if (position.TradeType == TradeType.Buy && _stopLossPriceBuy.HasValue)
+                {
+                    if (Bars.ClosePrices.Last(1) < _stopLossPriceBuy.Value)
+                    {
+                        ClosePosition(position);
+                        Print("Closing Buy position as candle closed below Stop Loss Price.");
+                    }
+                }
+
+                if (position.TradeType == TradeType.Sell && _stopLossPriceSell.HasValue)
+                {
+                    if (Bars.ClosePrices.Last(1) > _stopLossPriceSell.Value)
+                    {
+                        ClosePosition(position);
+                        Print("Closing Sell position as candle closed above Stop Loss Price.");
+                    }
+                }
+            }
+        }
+
+        private void PlaceBuyOrder(Bar firstCandle, Bar secondCandle)
+        {
+            if (_buyDisabled)
+            {
+                Print("Buy position prevented due to daily conditions.");
+                return;
+            }
+
+            try
+            {
+                _stopLossPriceBuy = Math.Min(firstCandle.Low, secondCandle.Low) - Symbol.PipSize - Symbol.Spread;
+                double entryPrice = Bars.ClosePrices.Last(1);
+                double stopLossPips = Math.Abs(entryPrice - _stopLossPriceBuy.Value) / Symbol.PipSize;
+
+                if (stopLossPips <= 0 || double.IsNaN(stopLossPips))
+                {
+                    Print($"Invalid Stop Loss Pips for Buy Order: {stopLossPips}");
+                    return;
+                }
+
+                double takeProfitPips = (stopLossPips * TakeProfitMultiplier) + Symbol.Spread / Symbol.PipSize;
+
+                double volume = CalculateVolume(stopLossPips);
+
+                if (double.IsNaN(volume) || volume <= 0)
+                {
+                    Print($"Invalid Volume for Buy Order: {volume}");
+                    return;
+                }
+
+                ExecuteMarketOrder(TradeType.Buy, Symbol.Name, volume, "AdvancedTradingBot", null, takeProfitPips);
+            }
+            catch (Exception ex)
+            {
+                Print($"Error in PlaceBuyOrder: {ex.GetType().Name} - {ex.Message}");
+            }
+        }
+
+        private void PlaceSellOrder(Bar firstCandle, Bar secondCandle)
+        {
+            if (_sellDisabled)
+            {
+                Print("Sell position prevented due to daily conditions.");
+                return;
+            }
+
+            try
+            {
+                _stopLossPriceSell = Math.Max(firstCandle.High, secondCandle.High) + Symbol.PipSize + Symbol.Spread;
+                double entryPrice = Bars.ClosePrices.Last(1);
+                double stopLossPips = (_stopLossPriceSell.Value - entryPrice) / Symbol.PipSize;
+
+                if (stopLossPips <= 0 || double.IsNaN(stopLossPips))
+                {
+                    Print($"Invalid Stop Loss Pips for Sell Order: {stopLossPips}");
+                    return;
+                }
+
+                double takeProfitPips = (stopLossPips * TakeProfitMultiplier) + Symbol.Spread / Symbol.PipSize;
+
+                double volume = CalculateVolume(stopLossPips);
+
+                if (double.IsNaN(volume) || volume <= 0)
+                {
+                    Print($"Invalid Volume for Sell Order: {volume}");
+                    return;
+                }
+
+                ExecuteMarketOrder(TradeType.Sell, Symbol.Name, volume, "AdvancedTradingBot", null, takeProfitPips);
+            }
+            catch (Exception ex)
+            {
+                Print($"Error in PlaceSellOrder: {ex.GetType().Name} - {ex.Message}");
+            }
+        }
+
+        private double CalculateVolume(double stopLossPips)
+        {
+            try
+            {
+                double riskAmount = Account.Balance * (RiskPercentage / 100);
+                double volume = riskAmount / (stopLossPips * Symbol.PipValue);
+                return Symbol.NormalizeVolumeInUnits(volume, RoundingMode.ToNearest);
+            }
+            catch (Exception ex)
+            {
+                Print($"Error in CalculateVolume: {ex.GetType().Name} - {ex.Message}");
+                return double.NaN;
+            }
+        }
+
+        private void HandleMainConditions()
+        {
+            if (EnableMainBuySellCondition && Positions.Count == 0)
+            {
+                CheckMainBuyCondition();
+                CheckMainSellCondition();
+            }
+        }
+
+
+        private void CloseAllPositions()
+        {
+            foreach (var position in Positions)
+            {
+                ClosePosition(position);
+            }
+        }
+
+        private void AdjustStopLossAfterCandleClose()
+        {
+            foreach (var position in Positions)
+            {
+                // Check if stop loss is already set to avoid redundant updates
+                if (position.StopLoss.HasValue && position.StopLoss > 0)
+                {
+                    Print($"Stop Loss for {position.TradeType} Position already set, skipping update.");
+                    continue;
+                }
+
+                var lastClosedCandle = Bars.Last(1);
+                double newStopLossPrice = 0;
+
+                if (position.TradeType == TradeType.Buy)
+                {
+                    // Set stop loss only if the candle is bearish (Close < Open)
+                    if (lastClosedCandle.Close < lastClosedCandle.Open)
+                    {
+                        newStopLossPrice = lastClosedCandle.Low - Symbol.PipSize;
+                        position.ModifyStopLossPrice(newStopLossPrice);
+                        Print($"Stop Loss set for Buy Position at: {newStopLossPrice}");
+                    }
+                    else
+                    {
+                        Print("Buy position: Candle was not bearish, stop loss not set.");
+                    }
+                }
+                else if (position.TradeType == TradeType.Sell)
+                {
+                    // Set stop loss only if the candle is bullish (Close > Open)
+                    if (lastClosedCandle.Close > lastClosedCandle.Open)
+                    {
+                        newStopLossPrice = lastClosedCandle.High + Symbol.PipSize;
+                        position.ModifyStopLossPrice(newStopLossPrice);
+                        Print($"Stop Loss set for Sell Position at: {newStopLossPrice}");
+                    }
+                    else
+                    {
+                        Print("Sell position: Candle was not bullish, stop loss not set.");
+                    }
+                }
+            }
+        }
+
+
+
+        private void CheckMainBuyCondition()
+        {
+            if (_preventNewBuy)
+            {
+                Print("New buy positions are currently disabled due to RSI conditions.");
+                return;
+            }
+
+            bool rsiConditionMet = false;
+            for (int i = 1; i <= 12; i++)
+            {
+                if (_rsi.Result.Last(i) < RsiOversold)
+                {
+                    rsiConditionMet = true;
+                    break;
+                }
+            }
+
+            double macdValue = _macdCrossOver.MACD.Last(1);
+            double macdSignal = _macdCrossOver.Signal.Last(1);
+            bool macdConditionMet = macdValue > macdSignal && _macdCrossOver.MACD.Last(2) <= _macdCrossOver.Signal.Last(2);
+
+            Print($"RSI Condition Met: {rsiConditionMet}, MACD Value: {macdValue}, MACD Signal: {macdSignal}, MACD Condition Met: {macdConditionMet}");
+
+            if (rsiConditionMet && macdConditionMet && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
+            {
+                _baseBuyCandle = Bars.Last(1);
+                _currentState = "AwaitingFirstCandleBuy";
+                Print($"Main Buy Condition Met. Base Candle - High: {_baseBuyCandle.High}, Low: {_baseBuyCandle.Low}, Open: {_baseBuyCandle.Open}, Close: {_baseBuyCandle.Close}. Transitioning to AwaitingFirstCandleBuy State.");
+            }
+        }
+
+
+        private void CheckMainSellCondition()
+        {
+            if (_preventNewSell)
+            {
+                Print("New sell positions are currently disabled due to RSI conditions.");
+                return;
+            }
+
+            bool rsiConditionMet = false;
+            for (int i = 1; i <= 12; i++)
+            {
+                if (_rsi.Result.Last(i) > RsiOverbought)
+                {
+                    rsiConditionMet = true;
+                    break;
+                }
+            }
+
+            double macdValue = _macdCrossOver.MACD.Last(1);
+            double macdSignal = _macdCrossOver.Signal.Last(1);
+            bool macdConditionMet = macdValue < macdSignal && _macdCrossOver.MACD.Last(2) >= _macdCrossOver.Signal.Last(2);
+
+            Print($"RSI Condition Met: {rsiConditionMet}, MACD Value: {macdValue}, MACD Signal: {macdSignal}, MACD Condition Met: {macdConditionMet}");
+
+            if (rsiConditionMet && macdConditionMet && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
+            {
+                _baseSellCandle = Bars.Last(1);
+                _currentState = "AwaitingFirstCandleSell";
+                Print($"Main Sell Condition Met. Base Candle - High: {_baseSellCandle.High}, Low: {_baseSellCandle.Low}, Open: {_baseSellCandle.Open}, Close: {_baseSellCandle.Close}. Transitioning to AwaitingFirstCandleSell State.");
+            }
+        }
+
+
+        private void CheckFirstCandleAfterBase(Bar baseCandle, string direction)
+        {
+            var firstCandle = Bars.Last(1);
+
+            if (direction == "Buy")
+            {
+                if (firstCandle.Close > baseCandle.Low)
+                {
+                    _currentState = "AwaitingSecondCandleBuy";
+                    Print($"First Candle After Base Buy Condition Met. High: {firstCandle.High}, Low: {firstCandle.Low}, Open: {firstCandle.Open}, Close: {firstCandle.Close}. Transitioning to AwaitingSecondCandleBuy State.");
+                }
+                else
+                {
+                    _currentState = null;
+                }
+            }
+            else if (direction == "Sell")
+            {
+                if (firstCandle.Close < baseCandle.High)
+                {
+                    _currentState = "AwaitingSecondCandleSell";
+                    Print($"First Candle After Base Sell Condition Met. High: {firstCandle.High}, Low: {firstCandle.Low}, Open: {firstCandle.Open}, Close: {firstCandle.Close}. Transitioning to AwaitingSecondCandleSell State.");
+                }
+                else
+                {
+                    _currentState = null;
+                }
+            }
+        }
+
+        private void CheckSecondCandleAfterBase(Bar baseCandle, string direction)
+        {
+            var firstCandle = Bars.Last(2);
+            var secondCandle = Bars.Last(1);
+
+            if (direction == "Buy")
+            {
+                if (secondCandle.Close > baseCandle.High && secondCandle.Close > firstCandle.Low && secondCandle.Close > secondCandle.Open)
+                {
+                    Print($"Second Candle After Base Buy Condition Met. High: {secondCandle.High}, Low: {secondCandle.Low}, Open: {secondCandle.Open}, Close: {secondCandle.Close}");
+                    PlaceBuyOrder(firstCandle, secondCandle);
+                }
+            }
+            else if (direction == "Sell")
+            {
+                if (secondCandle.Close < baseCandle.Low && secondCandle.Close < firstCandle.High && secondCandle.Close < secondCandle.Open)
+                {
+                    Print($"Second Candle After Base Sell Condition Met. High: {secondCandle.High}, Low: {secondCandle.Low}, Open: {secondCandle.Open}, Close: {secondCandle.Close}");
+                    PlaceSellOrder(firstCandle, secondCandle);
+                }
+            }
+
+            _currentState = null;
+        }
+
+        private void CheckRsiTradePrevention()
+        {
+            DateTime currentTime = Server.Time;
+
+            // ✅ Track RSI staying above overbought level for 55 minutes
+            if (_rsi.Result.Last(1) >= RsiOverbought)
+            {
+                if (_lastRsiAboveOverboughtStart == DateTime.MinValue)
+                {
+                    _lastRsiAboveOverboughtStart = currentTime;
+                    Print("Tracking RSI above overbought level start.");
+                }
+                else if (!_rsiAboveOverboughtConfirmed && currentTime - _lastRsiAboveOverboughtStart >= TimeSpan.FromMinutes(55))
+                {
+                    _rsiAboveOverboughtConfirmed = true;
+                    _sellPreventionEndTime = DateTime.MinValue;  // Reset sell prevention timer
+                    Print("RSI has stayed above overbought level for 55 minutes. Sell trades disabled.");
+                }
+            }
+            else
+            {
+                // ✅ If RSI drops below overbought and was confirmed above for 55 minutes, extend prevention for 60 minutes
+                if (_rsiAboveOverboughtConfirmed)
+                {
+                    if (_sellPreventionEndTime == DateTime.MinValue)
+                    {
+                        _sellPreventionEndTime = currentTime.AddMinutes(60);
+                        Print("RSI dropped below overbought level. Sell trades disabled for 60 more minutes.");
+                    }
+                    else if (currentTime >= _sellPreventionEndTime)
+                    {
+                        _rsiAboveOverboughtConfirmed = false;
+                        _sellPreventionEndTime = DateTime.MinValue;
+                        Print("Sell trades are enabled again after 60 minutes of RSI dropping below overbought level.");
+                    }
+                }
+                _lastRsiAboveOverboughtStart = DateTime.MinValue;
+            }
+
+            // ✅ Track RSI staying below oversold level for 55 minutes
+            if (_rsi.Result.Last(1) <= RsiOversold)
+            {
+                if (_lastRsiBelowOversoldStart == DateTime.MinValue)
+                {
+                    _lastRsiBelowOversoldStart = currentTime;
+                    Print("Tracking RSI below oversold level start.");
+                }
+                else if (!_rsiBelowOversoldConfirmed && currentTime - _lastRsiBelowOversoldStart >= TimeSpan.FromMinutes(55))
+                {
+                    _rsiBelowOversoldConfirmed = true;
+                    _buyPreventionEndTime = DateTime.MinValue;  // Reset buy prevention timer
+                    Print("RSI has stayed below oversold level for 55 minutes. Buy trades disabled.");
+                }
+            }
+            else
+            {
+                // ✅ If RSI rises above oversold and was confirmed below for 55 minutes, extend prevention for 60 minutes
+                if (_rsiBelowOversoldConfirmed)
+                {
+                    if (_buyPreventionEndTime == DateTime.MinValue)
+                    {
+                        _buyPreventionEndTime = currentTime.AddMinutes(60);
+                        Print("RSI rose above oversold level. Buy trades disabled for 60 more minutes.");
+                    }
+                    else if (currentTime >= _buyPreventionEndTime)
+                    {
+                        _rsiBelowOversoldConfirmed = false;
+                        _buyPreventionEndTime = DateTime.MinValue;
+                        Print("Buy trades are enabled again after 60 minutes of RSI rising above oversold level.");
+                    }
+                }
+                _lastRsiBelowOversoldStart = DateTime.MinValue;
+            }
+        }
+
+        private void CheckBuyCondition2AndSellCondition2()
+        {
+            int currentBarIndex = Bars.Count - 1; // Current bar index
+
+            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
+            {
+                if (!_outsideActiveHoursLogged)
+                {
+                    Print("BuyCondition2 and SellCondition2 are outside active trading hours.");
+                    _outsideActiveHoursLogged = true;
+                }
+                return;
+            }
+            else
+            {
+                _outsideActiveHoursLogged = false;
+            }
+
+            if (_sellDisabledToday && !_buyCondition2Triggered && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 3 || _buyCondition2ExecutedBarIndex == -1))
+            {
+                bool macdBreached = false;
+                for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
+                {
+                    if (_macdCrossOver.MACD[i] <= -PreventionMACDLevel)
+                    {
+                        macdBreached = true;
+                        break;
+                    }
+                }
+
+                if (!macdBreached && _macdCrossOver.MACD.Last(1) < 0)
+                {
+                    _macdBuyConditionValid = true;
+                }
+
+                if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
+                {
+                    _baseCandleBuyCondition2 = Bars.Last(1);
+                    _buyCondition2Triggered = true;
+                    _buyCondition2Start = Server.Time;
+                    Print($"BuyCondition2 triggered at {_baseCandleBuyCondition2.Value.High}");
+                }
+            }
+
+            if (_buyDisabledToday && !_sellCondition2Triggered && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 3 || _sellCondition2ExecutedBarIndex == -1))
+            {
+                bool macdBreached = false;
+                for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
+                {
+                    if (_macdCrossOver.MACD[i] >= PreventionMACDLevel)
+                    {
+                        macdBreached = true;
+                        break;
+                    }
+                }
+
+                if (!macdBreached && _macdCrossOver.MACD.Last(1) > 0)
+                {
+                    _macdSellConditionValid = true;
+                }
+
+                if (_macdSellConditionValid && _macdCrossOver.MACD.Last(1) < _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
+                {
+                    _baseCandleSellCondition2 = Bars.Last(1);
+                    _sellCondition2Triggered = true;
+                    _sellCondition2Start = Server.Time;
+                    Print($"SellCondition2 triggered at {_baseCandleSellCondition2.Value.Low}");
+                }
+            }
+        }
+
+
+      
+        private void CheckTradeTriggersCondition2()
+        {
+            int currentBarIndex = Bars.Count - 1; // Current bar index
+
+            // ✅ Check BuyCondition2 Trigger
+            if (_buyCondition2Triggered && !_buyCondition2Executed)
+            {
+                for (int i = 1; i <= 4; i++) // Check last 4 candles
+                {
+                    if (_baseCandleBuyCondition2.HasValue 
+                        && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
+                        && Bars.ClosePrices.Last(i) > Bars.OpenPrices.Last(i) // Ensure the candle is bullish
+                        && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 3 || _buyCondition2ExecutedBarIndex == -1)) 
+                    {
+                        PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
+                        _buyCondition2Executed = true;
+                        _buyCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _buyCondition2Triggered = false;
+                        _macdBuyConditionValid = false;
+                        _baseCandleBuyCondition2 = null;
+                        Print($"Buy trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
+                        return;
+                    }
+                }
+
+                if (Server.Time > _buyCondition2Start.AddMinutes(20))
+                {
+                    Print("BuyCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                    _buyCondition2Executed = false; 
+                    _buyCondition2Triggered = false;
+                    _macdBuyConditionValid = false;
+                    _baseCandleBuyCondition2 = null;
+                }
+            }
+
+            // ✅ Check SellCondition2 Trigger
+            if (_sellCondition2Triggered && !_sellCondition2Executed)
+            {
+                for (int i = 1; i <= 4; i++) // Check last 4 candles
+                {
+                    if (_baseCandleSellCondition2.HasValue 
+                        && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
+                        && Bars.ClosePrices.Last(i) < Bars.OpenPrices.Last(i) // Ensure the candle is bearish
+                        && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 3 || _sellCondition2ExecutedBarIndex == -1)) 
+                    {
+                        PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
+                        _sellCondition2Executed = true;
+                        _sellCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _sellCondition2Triggered = false;
+                        _macdSellConditionValid = false;
+                        _baseCandleSellCondition2 = null;
+                        Print($"Sell trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
+                        return;
+                    }
+                }
+
+                if (Server.Time > _sellCondition2Start.AddMinutes(20))
+                {
+                    Print("SellCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                    _sellCondition2Executed = false; 
+                    _sellCondition2Triggered = false;
+                    _macdSellConditionValid = false;
+                    _baseCandleSellCondition2 = null;
+                }
+            }
+        }
+
+      
+        private void PlaceBuyOrderCondition2(Bar baseCandle)
+        {
+            // Check if baseCandle is null
+            if (baseCandle == null)
+            {
+                Print("Base candle for BuyCondition2 is null. Trade not executed.");
+                return;
+            }
+
+            // Accessing baseCandle properties
+            double stopLossPrice = baseCandle.Low - Symbol.PipSize - Symbol.Spread;
+            double entryPrice = Bars.ClosePrices.Last(1);
+            double stopLossPips = (entryPrice - stopLossPrice) / Symbol.PipSize;
+
+            if (stopLossPips <= 0 || double.IsNaN(stopLossPips) || stopLossPips < Symbol.Spread / Symbol.PipSize)
+            {
+                Print("Invalid stop loss calculation for BuyCondition2.");
+                return;
+            }
+
+            double takeProfitPips = (stopLossPips * TakeProfitMultiplier2) + Symbol.Spread / Symbol.PipSize;
+            double volume = CalculateVolumeCondition2(stopLossPips);
+
+            if (double.IsNaN(volume) || volume <= 0)
+            {
+                Print("Invalid volume calculation for BuyCondition2.");
+                return;
+            }
+
+            ExecuteMarketOrder(TradeType.Buy, Symbol.Name, volume, "BuyCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
+            Print("BuyCondition2 trade executed.");
+        }
+
+
+        private void PlaceSellOrderCondition2(Bar baseCandle)
+        {
+            // Check if baseCandle is null
+            if (baseCandle == null)
+            {
+                Print("Base candle for SellCondition2 is null. Trade not executed.");
+                return;
+            }
+
+            // Accessing baseCandle properties
+            double stopLossPrice = baseCandle.High + Symbol.PipSize + Symbol.Spread;
+            double entryPrice = Bars.ClosePrices.Last(1);
+            double stopLossPips = (stopLossPrice - entryPrice) / Symbol.PipSize;
+
+            if (stopLossPips <= 0 || double.IsNaN(stopLossPips) || stopLossPips < Symbol.Spread / Symbol.PipSize)
+            {
+                Print("Invalid stop loss calculation for SellCondition2.");
+                return;
+            }
+
+            double takeProfitPips = (stopLossPips * TakeProfitMultiplier2) + Symbol.Spread / Symbol.PipSize;
+            double volume = CalculateVolumeCondition2(stopLossPips);
+
+            if (double.IsNaN(volume) || volume <= 0)
+            {
+                Print("Invalid volume calculation for SellCondition2.");
+                return;
+            }
+
+            ExecuteMarketOrder(TradeType.Sell, Symbol.Name, volume, "SellCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
+            Print("SellCondition2 trade executed.");
+        }
+
+
+        private double CalculateVolumeCondition2(double stopLossPips)
+        {
+            try
+            {
+                double riskAmount = Account.Balance * (RiskPercentage2 / 100);
+                double volume = riskAmount / (stopLossPips * Symbol.PipValue);
+                return Symbol.NormalizeVolumeInUnits(volume, RoundingMode.ToNearest);
+            }
+            catch (Exception ex)
+            {
+                Print($"Error calculating volume for Condition2: {ex.Message}");
+                return double.NaN;
+            }
+        }
+
+      
+    }  
+}
