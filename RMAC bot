@@ -844,10 +844,10 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
-            // ✅ Check BuyCondition2 Trigger
+            // Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
-                for (int i = 1; i <= 4; i++) // Check last 4 candles
+                for (int i = 1; i <= 4; i++)
                 {
                     if (_baseCandleBuyCondition2.HasValue 
                         && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
@@ -875,10 +875,10 @@ namespace cAlgo.Robots
                 }
             }
 
-            // ✅ Check SellCondition2 Trigger
+            // Check SellCondition2 Trigger
             if (_sellCondition2Triggered && !_sellCondition2Executed)
             {
-                for (int i = 1; i <= 4; i++) // Check last 4 candles
+                for (int i = 1; i <= 4; i++)
                 {
                     if (_baseCandleSellCondition2.HasValue 
                         && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
