@@ -1,0 +1,2 @@
+# RMAC
+cTrader Bot
