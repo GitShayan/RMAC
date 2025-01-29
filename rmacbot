@@ -280,13 +280,13 @@ namespace cAlgo.Robots
             {
                 Print("✅ Daily flags reset for new trading day.");
 
-                // Reset Main Buy/Sell Flags
+                // ✅ Reset all trading restrictions for the new day
                 _buyDisabled = false;
                 _sellDisabled = false;
                 _sellDisabledToday = false;
                 _buyDisabledToday = false;
 
-                // Reset BuyCondition2 and SellCondition2 flags
+                // ✅ Reset BuyCondition2 & SellCondition2 triggers
                 _buyCondition2Triggered = false;
                 _sellCondition2Triggered = false;
                 _buyCondition2Executed = false;
@@ -296,18 +296,19 @@ namespace cAlgo.Robots
                 _baseCandleBuyCondition2 = null;
                 _baseCandleSellCondition2 = null;
 
-                // Reset RSI-based prevention flags
+                // ✅ Reset MACD conditions
+                _macdBuyConditionValid = false;
+                _macdSellConditionValid = false;
+
+                // ✅ Reset RSI trade prevention tracking
                 _preventNewBuy = false;
                 _preventNewSell = false;
-                _lastRsiAboveOverboughtStart = DateTime.MinValue;
-                _lastRsiBelowOversoldStart = DateTime.MinValue;
+                _lastRsiPreventionStart = DateTime.MinValue;
+                _lastRsiBelowOversold = DateTime.MinValue;
+                _lastRsiAboveOverbought = DateTime.MinValue;
+                _sellPreventionEndTime = DateTime.MinValue;
+                _buyPreventionEndTime = DateTime.MinValue;
 
-                // Reset Maximum Loss and Trading Hours tracking
-                _hasLoggedOutsideActiveHours = false;
-                _hasLoggedActiveHoursStart = false;
-                _hasLoggedClosePositions = false;
-
-                // ✅ Ensuring everything resets properly each day
                 _lastResetDate = Server.Time.Date;
             }
         }
@@ -777,12 +778,12 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
-            // ✅ Ensure the bot does not execute trades outside active trading hours
+            // ✅ Ensure the bot only evaluates trades inside active trading hours
             if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
             {
                 if (!_outsideActiveHoursLogged)
                 {
-                    Print("BuyCondition2 and SellCondition2 are outside active trading hours.");
+                    Print("⏳ BuyCondition2 and SellCondition2 are outside active trading hours.");
                     _outsideActiveHoursLogged = true;
                 }
                 return;
@@ -792,17 +793,12 @@ namespace cAlgo.Robots
                 _outsideActiveHoursLogged = false;
             }
 
-            // ✅ Prevent triggering when daily buy/sell limits are reached
-            if (_buyDisabledToday && _sellDisabledToday)
-            {
-                Print("Daily trading limits reached. Skipping new trade evaluation.");
-                return;
-            }
-
-            // ✅ Ensure MACD criteria are met BEFORE setting base candles
+            // ✅ Check BuyCondition2 trigger conditions
             if (_sellDisabledToday && !_buyCondition2Triggered && !_buyCondition2Executed)
             {
                 bool macdBreached = false;
+                
+                // ✅ Ensure MACD did not go below prevention level at any time before triggering
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
                 {
                     if (_macdCrossOver.MACD[i] <= -PreventionMACDLevel)
@@ -814,7 +810,7 @@ namespace cAlgo.Robots
 
                 if (!macdBreached && _macdCrossOver.MACD.Last(1) < 0)
                 {
-                    _macdBuyConditionValid = true;
+                    _macdBuyConditionValid = true;  // ✅ Set condition valid only if MACD aligns
                 }
 
                 if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) 
@@ -823,13 +819,17 @@ namespace cAlgo.Robots
                     _baseCandleBuyCondition2 = Bars.Last(1);
                     _buyCondition2Triggered = true;
                     _buyCondition2Start = Server.Time;
+                    _buyCondition2TriggeredBarIndex = currentBarIndex;
                     Print($"✅ BuyCondition2 triggered at {_baseCandleBuyCondition2.Value.High}");
                 }
             }
 
+            // ✅ Check SellCondition2 trigger conditions
             if (_buyDisabledToday && !_sellCondition2Triggered && !_sellCondition2Executed)
             {
                 bool macdBreached = false;
+
+                // ✅ Ensure MACD did not go above prevention level at any time before triggering
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
                 {
                     if (_macdCrossOver.MACD[i] >= PreventionMACDLevel)
@@ -850,11 +850,11 @@ namespace cAlgo.Robots
                     _baseCandleSellCondition2 = Bars.Last(1);
                     _sellCondition2Triggered = true;
                     _sellCondition2Start = Server.Time;
+                    _sellCondition2TriggeredBarIndex = currentBarIndex;
                     Print($"✅ SellCondition2 triggered at {_baseCandleSellCondition2.Value.Low}");
                 }
             }
         }
-
 
       
         private void CheckTradeTriggersCondition2()
