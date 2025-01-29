@@ -777,7 +777,7 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
-            // ✅ Ensure logs appear once per new candle
+            // ✅ Ensure the bot does not execute trades outside active trading hours
             if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
             {
                 if (!_outsideActiveHoursLogged)
@@ -792,8 +792,15 @@ namespace cAlgo.Robots
                 _outsideActiveHoursLogged = false;
             }
 
-            // ✅ Check BuyCondition2
-            if (_sellDisabledToday && !_buyCondition2Triggered && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 3 || _buyCondition2ExecutedBarIndex == -1))
+            // ✅ Prevent triggering when daily buy/sell limits are reached
+            if (_buyDisabledToday && _sellDisabledToday)
+            {
+                Print("Daily trading limits reached. Skipping new trade evaluation.");
+                return;
+            }
+
+            // ✅ Ensure MACD criteria are met BEFORE setting base candles
+            if (_sellDisabledToday && !_buyCondition2Triggered && !_buyCondition2Executed)
             {
                 bool macdBreached = false;
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
@@ -810,20 +817,17 @@ namespace cAlgo.Robots
                     _macdBuyConditionValid = true;
                 }
 
-                if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
+                if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) 
+                    && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
                 {
                     _baseCandleBuyCondition2 = Bars.Last(1);
                     _buyCondition2Triggered = true;
                     _buyCondition2Start = Server.Time;
-                    _buyCondition2TriggeredBarIndex = currentBarIndex;
-
-                    // ✅ Log only once per candle
                     Print($"✅ BuyCondition2 triggered at {_baseCandleBuyCondition2.Value.High}");
                 }
             }
 
-            // ✅ Check SellCondition2
-            if (_buyDisabledToday && !_sellCondition2Triggered && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 3 || _sellCondition2ExecutedBarIndex == -1))
+            if (_buyDisabledToday && !_sellCondition2Triggered && !_sellCondition2Executed)
             {
                 bool macdBreached = false;
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
@@ -840,26 +844,31 @@ namespace cAlgo.Robots
                     _macdSellConditionValid = true;
                 }
 
-                if (_macdSellConditionValid && _macdCrossOver.MACD.Last(1) < _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
+                if (_macdSellConditionValid && _macdCrossOver.MACD.Last(1) < _macdCrossOver.Signal.Last(1) 
+                    && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
                 {
                     _baseCandleSellCondition2 = Bars.Last(1);
                     _sellCondition2Triggered = true;
                     _sellCondition2Start = Server.Time;
-                    _sellCondition2TriggeredBarIndex = currentBarIndex;
-
-                    // ✅ Log only once per candle
                     Print($"✅ SellCondition2 triggered at {_baseCandleSellCondition2.Value.Low}");
                 }
             }
         }
+
 
       
         private void CheckTradeTriggersCondition2()
         {
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
-            // ✅ Check BuyCondition2 Trigger
-            if (_buyCondition2Triggered && !_buyCondition2Executed) // Prevent multiple trades
+            // ✅ Prevent execution outside active trading hours
+            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
+            {
+                return;
+            }
+
+            // ✅ Check BuyCondition2 Execution
+            if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
                 for (int i = 1; i <= 4; i++)
                 {
@@ -867,8 +876,8 @@ namespace cAlgo.Robots
                         && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
-                        _buyCondition2Executed = true;  // 🔹 Prevent another trade execution
-                        _buyCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _buyCondition2Executed = true;
+                        _buyCondition2ExecutedBarIndex = currentBarIndex;
                         _buyCondition2Triggered = false;
                         _macdBuyConditionValid = false;
                         _baseCandleBuyCondition2 = null;
@@ -878,8 +887,8 @@ namespace cAlgo.Robots
                 }
             }
 
-            // ✅ Check SellCondition2 Trigger
-            if (_sellCondition2Triggered && !_sellCondition2Executed) // Prevent multiple trades
+            // ✅ Check SellCondition2 Execution
+            if (_sellCondition2Triggered && !_sellCondition2Executed)
             {
                 for (int i = 1; i <= 4; i++)
                 {
@@ -887,8 +896,8 @@ namespace cAlgo.Robots
                         && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
                     {
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
-                        _sellCondition2Executed = true;  // 🔹 Prevent another trade execution
-                        _sellCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _sellCondition2Executed = true;
+                        _sellCondition2ExecutedBarIndex = currentBarIndex;
                         _sellCondition2Triggered = false;
                         _macdSellConditionValid = false;
                         _baseCandleSellCondition2 = null;
@@ -917,6 +926,7 @@ namespace cAlgo.Robots
                 _baseCandleSellCondition2 = null;
             }
         }
+
 
 
         private void ResetBuyCondition2Flags()
