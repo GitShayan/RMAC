@@ -120,9 +120,6 @@ namespace cAlgo.Robots
         private bool _rsiBelowOversoldConfirmed = false;
         private DateTime _sellPreventionEndTime = DateTime.MinValue;
         private DateTime _buyPreventionEndTime = DateTime.MinValue;
-     
-        private int _buyCondition2TriggeredBarIndex = -1;
-        private int _sellCondition2TriggeredBarIndex = -1;
 
 
         protected override void OnStart()
