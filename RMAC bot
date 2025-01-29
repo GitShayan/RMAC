@@ -838,25 +838,23 @@ namespace cAlgo.Robots
             }
         }
 
-
       
         private void CheckTradeTriggersCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Current bar index
+            int currentBarIndex = Bars.Count - 1; // Get the latest bar index
 
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
                 if (_baseCandleBuyCondition2.HasValue)
                 {
-                    // Wait for exactly 4 candles AFTER base candle
-                    int baseCandleIndex = _baseCandleBuyCondition2.Value.Index;
+                    int baseCandleIndex = _buyCondition2TriggeredBarIndex; // Use stored index
                     int candlesPassed = currentBarIndex - baseCandleIndex;
 
-                    if (candlesPassed >= 1 && candlesPassed <= 4) // Only check within the 4-candle window
+                    if (candlesPassed >= 1 && candlesPassed <= 4) // Ensure checking within next 4 bars
                     {
                         if (Bars.ClosePrices.Last(1) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
-                            && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1)) // Ensure it's bullish
+                            && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1)) // Ensure bullish close
                         {
                             PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
                             _buyCondition2Executed = true;
@@ -883,14 +881,13 @@ namespace cAlgo.Robots
             {
                 if (_baseCandleSellCondition2.HasValue)
                 {
-                    // Wait for exactly 4 candles AFTER base candle
-                    int baseCandleIndex = _baseCandleSellCondition2.Value.Index;
+                    int baseCandleIndex = _sellCondition2TriggeredBarIndex; // Use stored index
                     int candlesPassed = currentBarIndex - baseCandleIndex;
 
-                    if (candlesPassed >= 1 && candlesPassed <= 4) // Only check within the 4-candle window
+                    if (candlesPassed >= 1 && candlesPassed <= 4) // Ensure checking within next 4 bars
                     {
                         if (Bars.ClosePrices.Last(1) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
-                            && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1)) // Ensure it's bearish
+                            && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1)) // Ensure bearish close
                         {
                             PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
                             _sellCondition2Executed = true;
