@@ -859,63 +859,62 @@ namespace cAlgo.Robots
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
             // ✅ Check BuyCondition2 Trigger
-            if (_buyCondition2Triggered && !_buyCondition2Executed && _baseCandleBuyCondition2.HasValue)
+            if (_buyCondition2Triggered && !_buyCondition2Executed) // Prevent multiple trades
             {
-                int candlesPassed = currentBarIndex - _buyCondition2TriggeredBarIndex;
-                
-                if (candlesPassed < 4)
+                for (int i = 1; i <= 4; i++)
                 {
-                    if (_buyCondition2TriggeredBarIndex != currentBarIndex) // Log only once per new candle
-                    {
-                        _buyCondition2TriggeredBarIndex = currentBarIndex;
-                        Print($"🔍 Checking next 4 candles for BuyCondition2 (Base: {_baseCandleBuyCondition2.Value.High}):");
-                    }
-
-                    var candle = Bars[currentBarIndex];
-                    if (candle.Close > _baseCandleBuyCondition2.Value.High)
+                    if (_baseCandleBuyCondition2.HasValue 
+                        && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
-                        _buyCondition2Executed = true;
-                        ResetBuyCondition2Flags();
-                        Print($"✅ Buy trade executed at {candle.Close}");
+                        _buyCondition2Executed = true;  // 🔹 Prevent another trade execution
+                        _buyCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _buyCondition2Triggered = false;
+                        _macdBuyConditionValid = false;
+                        _baseCandleBuyCondition2 = null;
+                        Print($"✅ Buy trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
                         return;
                     }
-                }
-                else
-                {
-                    Print($"⏳ BuyCondition2 expired after 4 candles. Resetting flags.");
-                    ResetBuyCondition2Flags();
                 }
             }
 
             // ✅ Check SellCondition2 Trigger
-            if (_sellCondition2Triggered && !_sellCondition2Executed && _baseCandleSellCondition2.HasValue)
+            if (_sellCondition2Triggered && !_sellCondition2Executed) // Prevent multiple trades
             {
-                int candlesPassed = currentBarIndex - _sellCondition2TriggeredBarIndex;
-                
-                if (candlesPassed < 4)
+                for (int i = 1; i <= 4; i++)
                 {
-                    if (_sellCondition2TriggeredBarIndex != currentBarIndex) // Log only once per new candle
-                    {
-                        _sellCondition2TriggeredBarIndex = currentBarIndex;
-                        Print($"🔍 Checking next 4 candles for SellCondition2 (Base: {_baseCandleSellCondition2.Value.Low}):");
-                    }
-
-                    var candle = Bars[currentBarIndex];
-                    if (candle.Close < _baseCandleSellCondition2.Value.Low)
+                    if (_baseCandleSellCondition2.HasValue 
+                        && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
                     {
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
-                        _sellCondition2Executed = true;
-                        ResetSellCondition2Flags();
-                        Print($"✅ Sell trade executed at {candle.Close}");
+                        _sellCondition2Executed = true;  // 🔹 Prevent another trade execution
+                        _sellCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _sellCondition2Triggered = false;
+                        _macdSellConditionValid = false;
+                        _baseCandleSellCondition2 = null;
+                        Print($"✅ Sell trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
                         return;
                     }
                 }
-                else
-                {
-                    Print($"⏳ SellCondition2 expired after 4 candles. Resetting flags.");
-                    ResetSellCondition2Flags();
-                }
+            }
+
+            // ✅ Reset BuyCondition2 & SellCondition2 Execution Flags After 4 Candles or 20 Minutes
+            if (_buyCondition2Executed && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 4 || Server.Time > _buyCondition2Start.AddMinutes(20)))
+            {
+                Print($"⏳ BuyCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                _buyCondition2Executed = false;
+                _buyCondition2Triggered = false;
+                _macdBuyConditionValid = false;
+                _baseCandleBuyCondition2 = null;
+            }
+
+            if (_sellCondition2Executed && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 4 || Server.Time > _sellCondition2Start.AddMinutes(20)))
+            {
+                Print($"⏳ SellCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                _sellCondition2Executed = false;
+                _sellCondition2Triggered = false;
+                _macdSellConditionValid = false;
+                _baseCandleSellCondition2 = null;
             }
         }
 
