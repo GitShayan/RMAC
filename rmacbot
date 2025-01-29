@@ -861,72 +861,80 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
-            // ✅ Prevent execution outside active trading hours
-            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
-            {
-                return;
-            }
-
-            // ✅ Check BuyCondition2 Execution
+            // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
+                bool tradeExecuted = false;
+
+                // ✅ Loop through next 4 candles ONLY
                 for (int i = 1; i <= 4; i++)
                 {
+                    if (currentBarIndex < _buyCondition2TriggeredBarIndex + i)
+                        break; // Ensure we only check next 4 bars
+
                     if (_baseCandleBuyCondition2.HasValue 
                         && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
                         _buyCondition2Executed = true;
-                        _buyCondition2ExecutedBarIndex = currentBarIndex;
+                        _buyCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
                         _buyCondition2Triggered = false;
                         _macdBuyConditionValid = false;
                         _baseCandleBuyCondition2 = null;
                         Print($"✅ Buy trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
-                        return;
+                        tradeExecuted = true;
+                        break;
                     }
+                }
+
+                // ✅ If no trade happened in 4 candles, RESET and wait for a new valid MACD condition
+                if (!tradeExecuted && currentBarIndex >= _buyCondition2TriggeredBarIndex + 4)
+                {
+                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting flags and waiting for new MACD confirmation.");
+                    _buyCondition2Executed = false;
+                    _buyCondition2Triggered = false;
+                    _macdBuyConditionValid = false;
+                    _baseCandleBuyCondition2 = null;
                 }
             }
 
-            // ✅ Check SellCondition2 Execution
+            // ✅ Check SellCondition2 Trigger
             if (_sellCondition2Triggered && !_sellCondition2Executed)
             {
+                bool tradeExecuted = false;
+
+                // ✅ Loop through next 4 candles ONLY
                 for (int i = 1; i <= 4; i++)
                 {
+                    if (currentBarIndex < _sellCondition2TriggeredBarIndex + i)
+                        break; // Ensure we only check next 4 bars
+
                     if (_baseCandleSellCondition2.HasValue 
                         && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
                     {
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
                         _sellCondition2Executed = true;
-                        _sellCondition2ExecutedBarIndex = currentBarIndex;
+                        _sellCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
                         _sellCondition2Triggered = false;
                         _macdSellConditionValid = false;
                         _baseCandleSellCondition2 = null;
                         Print($"✅ Sell trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
-                        return;
+                        tradeExecuted = true;
+                        break;
                     }
                 }
-            }
 
-            // ✅ Reset BuyCondition2 & SellCondition2 Execution Flags After 4 Candles or 20 Minutes
-            if (_buyCondition2Executed && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 4 || Server.Time > _buyCondition2Start.AddMinutes(20)))
-            {
-                Print($"⏳ BuyCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
-                _buyCondition2Executed = false;
-                _buyCondition2Triggered = false;
-                _macdBuyConditionValid = false;
-                _baseCandleBuyCondition2 = null;
-            }
-
-            if (_sellCondition2Executed && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 4 || Server.Time > _sellCondition2Start.AddMinutes(20)))
-            {
-                Print($"⏳ SellCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
-                _sellCondition2Executed = false;
-                _sellCondition2Triggered = false;
-                _macdSellConditionValid = false;
-                _baseCandleSellCondition2 = null;
+                // ✅ If no trade happened in 4 candles, RESET and wait for a new valid MACD condition
+                if (!tradeExecuted && currentBarIndex >= _sellCondition2TriggeredBarIndex + 4)
+                {
+                    Print("⏳ SellCondition2 expired after 4 candles. Resetting flags and waiting for new MACD confirmation.");
+                    _sellCondition2Executed = false;
+                    _sellCondition2Triggered = false;
+                    _macdSellConditionValid = false;
+                    _baseCandleSellCondition2 = null;
+                }
             }
         }
-
 
 
         private void ResetBuyCondition2Flags()
