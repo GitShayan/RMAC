@@ -278,39 +278,37 @@ namespace cAlgo.Robots
         {
             if (_lastResetDate != Server.Time.Date)
             {
-                // Resetting flags for Main Buy/Sell Conditions
+                Print("✅ Daily flags reset for new trading day.");
+
+                // Reset Main Buy/Sell Flags
                 _buyDisabled = false;
                 _sellDisabled = false;
                 _sellDisabledToday = false;
                 _buyDisabledToday = false;
 
-                // Resetting flags for Buy/Sell Condition 2
-                _macdBuyConditionValid = false;
-                _macdSellConditionValid = false;
+                // Reset BuyCondition2 and SellCondition2 flags
                 _buyCondition2Triggered = false;
                 _sellCondition2Triggered = false;
                 _buyCondition2Executed = false;
                 _sellCondition2Executed = false;
-                _buyCondition2ExecutedBarIndex = -1;
-                _sellCondition2ExecutedBarIndex = -1;
                 _buyCondition2TriggeredBarIndex = -1;
                 _sellCondition2TriggeredBarIndex = -1;
                 _baseCandleBuyCondition2 = null;
                 _baseCandleSellCondition2 = null;
 
-                // Ensure flag reset after market reopens
-                _buyCondition2Start = DateTime.MinValue;
-                _sellCondition2Start = DateTime.MinValue;
-
-                // Resetting RSI prevention tracking
+                // Reset RSI-based prevention flags
                 _preventNewBuy = false;
                 _preventNewSell = false;
-                _lastRsiPreventionStart = DateTime.MinValue;
-                _lastRsiBelowOversold = DateTime.MinValue;
-                _lastRsiAboveOverbought = DateTime.MinValue;
+                _lastRsiAboveOverboughtStart = DateTime.MinValue;
+                _lastRsiBelowOversoldStart = DateTime.MinValue;
 
+                // Reset Maximum Loss and Trading Hours tracking
+                _hasLoggedOutsideActiveHours = false;
+                _hasLoggedActiveHoursStart = false;
+                _hasLoggedClosePositions = false;
+
+                // ✅ Ensuring everything resets properly each day
                 _lastResetDate = Server.Time.Date;
-                Print("✅ Daily flags reset for new trading day.");
             }
         }
 
@@ -861,86 +859,72 @@ namespace cAlgo.Robots
             int currentBarIndex = Bars.Count - 1; // Current bar index
 
             // ✅ Check BuyCondition2 Trigger
-            if (_buyCondition2Triggered && !_buyCondition2Executed)
+            if (_buyCondition2Triggered && !_buyCondition2Executed && _baseCandleBuyCondition2.HasValue)
             {
-                Print($"🔍 Evaluating next 4 candles for BuyCondition2:");
-                for (int i = 1; i <= 4; i++)
+                if (_buyCondition2TriggeredBarIndex != currentBarIndex) // Ensures logging only once per new candle
                 {
-                    var evalCandle = Bars.Last(i);
-                    Print($"  - Candle {i}: Open: {evalCandle.Open}, High: {evalCandle.High}, Low: {evalCandle.Low}, Close: {evalCandle.Close}");
-                }
-
-                for (int i = 1; i <= 4; i++)
-                {
-                    if (_baseCandleBuyCondition2.HasValue 
-                        && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
-                        && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 3 || _buyCondition2ExecutedBarIndex == -1)) 
+                    _buyCondition2TriggeredBarIndex = currentBarIndex;
+                    Print($"🔍 Evaluating next 4 candles for BuyCondition2 (Base: {_baseCandleBuyCondition2.Value.High}):");
+                    for (int i = 1; i <= 4; i++)
                     {
-                        PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
-                        _buyCondition2Executed = true;
-                        _buyCondition2ExecutedBarIndex = currentBarIndex;
-                        _buyCondition2Triggered = false;
-                        _macdBuyConditionValid = false;
-                        _baseCandleBuyCondition2 = null;
-                        Print($"✅ Buy trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
-                        return;
+                        int futureIndex = currentBarIndex + i;
+                        if (futureIndex >= Bars.Count) break;
+
+                        var candle = Bars[futureIndex];
+                        Print($"  - Candle {i}: Open: {candle.Open}, High: {candle.High}, Low: {candle.Low}, Close: {candle.Close}");
                     }
                 }
 
-                // ✅ Ensure flags reset after 4 candles or 20 minutes
-                int candlesPassed = currentBarIndex - _buyCondition2TriggeredBarIndex;
-                TimeSpan timeSinceTrigger = Server.Time - _buyCondition2Start;
-                
-                if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
+                for (int i = 1; i <= 4; i++)
                 {
-                    Print($"⏳ BuyCondition2 expired after {candlesPassed} candles or {timeSinceTrigger.TotalMinutes:F2} minutes. Resetting flags.");
-                    _buyCondition2Executed = false;
-                    _buyCondition2Triggered = false;
-                    _buyCondition2TriggeredBarIndex = -1;
-                    _macdBuyConditionValid = false;
-                    _baseCandleBuyCondition2 = null;
+                    int futureIndex = currentBarIndex + i;
+                    if (futureIndex >= Bars.Count) break;
+
+                    var candle = Bars[futureIndex];
+                    if (candle.Close > _baseCandleBuyCondition2.Value.High)
+                    {
+                        PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
+                        _buyCondition2Executed = true;
+                        _buyCondition2Triggered = false;
+                        _baseCandleBuyCondition2 = null;
+                        Print($"✅ Buy trade executed at {candle.Close}");
+                        break;
+                    }
                 }
             }
 
             // ✅ Check SellCondition2 Trigger
-            if (_sellCondition2Triggered && !_sellCondition2Executed)
+            if (_sellCondition2Triggered && !_sellCondition2Executed && _baseCandleSellCondition2.HasValue)
             {
-                Print($"🔍 Evaluating next 4 candles for SellCondition2:");
-                for (int i = 1; i <= 4; i++)
+                if (_sellCondition2TriggeredBarIndex != currentBarIndex) // Ensures logging only once per new candle
                 {
-                    var evalCandle = Bars.Last(i);
-                    Print($"  - Candle {i}: Open: {evalCandle.Open}, High: {evalCandle.High}, Low: {evalCandle.Low}, Close: {evalCandle.Close}");
-                }
-
-                for (int i = 1; i <= 4; i++)
-                {
-                    if (_baseCandleSellCondition2.HasValue 
-                        && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
-                        && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 3 || _sellCondition2ExecutedBarIndex == -1)) 
+                    _sellCondition2TriggeredBarIndex = currentBarIndex;
+                    Print($"🔍 Evaluating next 4 candles for SellCondition2 (Base: {_baseCandleSellCondition2.Value.Low}):");
+                    for (int i = 1; i <= 4; i++)
                     {
-                        PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
-                        _sellCondition2Executed = true;
-                        _sellCondition2ExecutedBarIndex = currentBarIndex;
-                        _sellCondition2Triggered = false;
-                        _macdSellConditionValid = false;
-                        _baseCandleSellCondition2 = null;
-                        Print($"✅ Sell trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
-                        return;
+                        int futureIndex = currentBarIndex + i;
+                        if (futureIndex >= Bars.Count) break;
+
+                        var candle = Bars[futureIndex];
+                        Print($"  - Candle {i}: Open: {candle.Open}, High: {candle.High}, Low: {candle.Low}, Close: {candle.Close}");
                     }
                 }
 
-                // ✅ Ensure flags reset after 4 candles or 20 minutes
-                int candlesPassed = currentBarIndex - _sellCondition2TriggeredBarIndex;
-                TimeSpan timeSinceTrigger = Server.Time - _sellCondition2Start;
-
-                if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
+                for (int i = 1; i <= 4; i++)
                 {
-                    Print($"⏳ SellCondition2 expired after {candlesPassed} candles or {timeSinceTrigger.TotalMinutes:F2} minutes. Resetting flags.");
-                    _sellCondition2Executed = false;
-                    _sellCondition2Triggered = false;
-                    _sellCondition2TriggeredBarIndex = -1;
-                    _macdSellConditionValid = false;
-                    _baseCandleSellCondition2 = null;
+                    int futureIndex = currentBarIndex + i;
+                    if (futureIndex >= Bars.Count) break;
+
+                    var candle = Bars[futureIndex];
+                    if (candle.Close < _baseCandleSellCondition2.Value.Low)
+                    {
+                        PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
+                        _sellCondition2Executed = true;
+                        _sellCondition2Triggered = false;
+                        _baseCandleSellCondition2 = null;
+                        Print($"✅ Sell trade executed at {candle.Close}");
+                        break;
+                    }
                 }
             }
         }
