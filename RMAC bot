@@ -771,23 +771,10 @@ namespace cAlgo.Robots
 
         private void CheckBuyCondition2AndSellCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Current bar index
+            int currentBarIndex = Bars.Count - 1; // Get the latest bar index
 
-            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
-            {
-                if (!_outsideActiveHoursLogged)
-                {
-                    Print("BuyCondition2 and SellCondition2 are outside active trading hours.");
-                    _outsideActiveHoursLogged = true;
-                }
-                return;
-            }
-            else
-            {
-                _outsideActiveHoursLogged = false;
-            }
-
-            if (_sellDisabledToday && !_buyCondition2Triggered && (currentBarIndex >= _buyCondition2ExecutedBarIndex + 3 || _buyCondition2ExecutedBarIndex == -1))
+            // ✅ Check BuyCondition2
+            if (_sellDisabledToday && !_buyCondition2Triggered && _buyCondition2TriggeredBarIndex == -1)
             {
                 bool macdBreached = false;
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
@@ -804,16 +791,19 @@ namespace cAlgo.Robots
                     _macdBuyConditionValid = true;
                 }
 
-                if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
+                if (_macdBuyConditionValid && _macdCrossOver.MACD.Last(1) > _macdCrossOver.Signal.Last(1) &&
+                    Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
                 {
                     _baseCandleBuyCondition2 = Bars.Last(1);
                     _buyCondition2Triggered = true;
                     _buyCondition2Start = Server.Time;
-                    Print($"BuyCondition2 triggered at {_baseCandleBuyCondition2.Value.High}");
+                    _buyCondition2TriggeredBarIndex = currentBarIndex; // ✅ Store Bar Index
+                    Print($"✅ BuyCondition2 triggered at {_baseCandleBuyCondition2.Value.High}, Triggered Bar: {_buyCondition2TriggeredBarIndex}");
                 }
             }
 
-            if (_buyDisabledToday && !_sellCondition2Triggered && (currentBarIndex >= _sellCondition2ExecutedBarIndex + 3 || _sellCondition2ExecutedBarIndex == -1))
+            // ✅ Check SellCondition2
+            if (_buyDisabledToday && !_sellCondition2Triggered && _sellCondition2TriggeredBarIndex == -1)
             {
                 bool macdBreached = false;
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
@@ -830,12 +820,14 @@ namespace cAlgo.Robots
                     _macdSellConditionValid = true;
                 }
 
-                if (_macdSellConditionValid && _macdCrossOver.MACD.Last(1) < _macdCrossOver.Signal.Last(1) && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
+                if (_macdSellConditionValid && _macdCrossOver.MACD.Last(1) < _macdCrossOver.Signal.Last(1) &&
+                    Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
                 {
                     _baseCandleSellCondition2 = Bars.Last(1);
                     _sellCondition2Triggered = true;
                     _sellCondition2Start = Server.Time;
-                    Print($"SellCondition2 triggered at {_baseCandleSellCondition2.Value.Low}");
+                    _sellCondition2TriggeredBarIndex = currentBarIndex; // ✅ Store Bar Index
+                    Print($"✅ SellCondition2 triggered at {_baseCandleSellCondition2.Value.Low}, Triggered Bar: {_sellCondition2TriggeredBarIndex}");
                 }
             }
         }
@@ -843,7 +835,7 @@ namespace cAlgo.Robots
       
         private void CheckTradeTriggersCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Latest bar index
+            int currentBarIndex = Bars.Count - 1; // Get latest bar index
 
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
@@ -853,10 +845,10 @@ namespace cAlgo.Robots
 
                 Print($"🟢 BuyCondition2 Debug -> Current Bar: {currentBarIndex}, Triggered Bar: {_buyCondition2TriggeredBarIndex}, Candles Passed: {candlesPassed}, Time Since Trigger: {timeSinceTrigger.TotalMinutes} min");
 
-                if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Check for 4 bars after trigger
+                if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Wait for 4 candles
                 {
-                    if (Bars.ClosePrices.Last(1) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
-                        && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1)) // Ensure bullish close
+                    if (Bars.ClosePrices.Last(1) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize &&
+                        Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1))
                     {
                         Print($"✅ Buy trade executed at {Bars.ClosePrices.Last(1)} (Trigger: {_baseCandleBuyCondition2.Value.High})");
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
@@ -888,10 +880,10 @@ namespace cAlgo.Robots
 
                 Print($"🔴 SellCondition2 Debug -> Current Bar: {currentBarIndex}, Triggered Bar: {_sellCondition2TriggeredBarIndex}, Candles Passed: {candlesPassed}, Time Since Trigger: {timeSinceTrigger.TotalMinutes} min");
 
-                if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Check for 4 bars after trigger
+                if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Wait for 4 candles
                 {
-                    if (Bars.ClosePrices.Last(1) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
-                        && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1)) // Ensure bearish close
+                    if (Bars.ClosePrices.Last(1) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize &&
+                        Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1))
                     {
                         Print($"✅ Sell trade executed at {Bars.ClosePrices.Last(1)} (Trigger: {_baseCandleSellCondition2.Value.Low})");
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
