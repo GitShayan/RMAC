@@ -773,6 +773,21 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Get the latest bar index
 
+            // ✅ Ensure Active Trading Hours
+            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
+            {
+                if (!_outsideActiveHoursLogged)
+                {
+                    Print("BuyCondition2 and SellCondition2 are outside active trading hours.");
+                    _outsideActiveHoursLogged = true;
+                }
+                return;
+            }
+            else
+            {
+                _outsideActiveHoursLogged = false;
+            }
+
             // ✅ Check BuyCondition2
             if (_sellDisabledToday && !_buyCondition2Triggered && _buyCondition2TriggeredBarIndex == -1)
             {
@@ -837,6 +852,12 @@ namespace cAlgo.Robots
         {
             int currentBarIndex = Bars.Count - 1; // Get latest bar index
 
+            // ✅ Ensure Active Trading Hours
+            if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
+            {
+                return;
+            }
+
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
@@ -855,6 +876,7 @@ namespace cAlgo.Robots
                         _buyCondition2Executed = true;
                         _buyCondition2Triggered = false;
                         _buyCondition2TriggeredBarIndex = -1;
+                        _buyCondition2ExecutedBarIndex = currentBarIndex; // ✅ Track Execution
                         _macdBuyConditionValid = false;
                         _baseCandleBuyCondition2 = null;
                         return;
@@ -890,6 +912,7 @@ namespace cAlgo.Robots
                         _sellCondition2Executed = true;
                         _sellCondition2Triggered = false;
                         _sellCondition2TriggeredBarIndex = -1;
+                        _sellCondition2ExecutedBarIndex = currentBarIndex; // ✅ Track Execution
                         _macdSellConditionValid = false;
                         _baseCandleSellCondition2 = null;
                         return;
