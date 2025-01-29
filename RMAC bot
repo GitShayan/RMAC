@@ -843,16 +843,15 @@ namespace cAlgo.Robots
       
         private void CheckTradeTriggersCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Get the latest bar index
+            int currentBarIndex = Bars.Count - 1; // Latest bar index
 
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
             {
-                int baseCandleIndex = _buyCondition2TriggeredBarIndex; // Use stored index
-                int candlesPassed = currentBarIndex - baseCandleIndex;
+                int candlesPassed = currentBarIndex - _buyCondition2TriggeredBarIndex;
                 TimeSpan timeSinceTrigger = Server.Time - _buyCondition2Start;
 
-                if (candlesPassed >= 1 && candlesPassed <= 4) // Ensure checking within next 4 bars
+                if (candlesPassed >= 1 && candlesPassed <= 4) // Check next 4 bars
                 {
                     if (Bars.ClosePrices.Last(1) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
                         && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1)) // Ensure bullish close
@@ -867,10 +866,10 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ Reset only after 4 bars or 20 minutes, whichever comes first
-                if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
+                // ✅ Corrected Expiry Logic (Only resets after 4 candles OR 20 minutes)
+                if ((candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20)) && _buyCondition2Triggered)
                 {
-                    Print("⏳ BuyCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                    Print($"⏳ BuyCondition2 expired at {Server.Time}. Resetting flags.");
                     _buyCondition2Executed = false;
                     _buyCondition2Triggered = false;
                     _macdBuyConditionValid = false;
@@ -881,11 +880,10 @@ namespace cAlgo.Robots
             // ✅ Check SellCondition2 Trigger
             if (_sellCondition2Triggered && !_sellCondition2Executed)
             {
-                int baseCandleIndex = _sellCondition2TriggeredBarIndex; // Use stored index
-                int candlesPassed = currentBarIndex - baseCandleIndex;
+                int candlesPassed = currentBarIndex - _sellCondition2TriggeredBarIndex;
                 TimeSpan timeSinceTrigger = Server.Time - _sellCondition2Start;
 
-                if (candlesPassed >= 1 && candlesPassed <= 4) // Ensure checking within next 4 bars
+                if (candlesPassed >= 1 && candlesPassed <= 4) // Check next 4 bars
                 {
                     if (Bars.ClosePrices.Last(1) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
                         && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1)) // Ensure bearish close
@@ -900,10 +898,10 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ Reset only after 4 bars or 20 minutes, whichever comes first
-                if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
+                // ✅ Corrected Expiry Logic (Only resets after 4 candles OR 20 minutes)
+                if ((candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20)) && _sellCondition2Triggered)
                 {
-                    Print("⏳ SellCondition2 expired after 4 candles or 20 minutes. Resetting flags.");
+                    Print($"⏳ SellCondition2 expired at {Server.Time}. Resetting flags.");
                     _sellCondition2Executed = false;
                     _sellCondition2Triggered = false;
                     _macdSellConditionValid = false;
