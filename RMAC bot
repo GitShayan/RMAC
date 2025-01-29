@@ -851,26 +851,27 @@ namespace cAlgo.Robots
                 int candlesPassed = currentBarIndex - _buyCondition2TriggeredBarIndex;
                 TimeSpan timeSinceTrigger = Server.Time - _buyCondition2Start;
 
+                Print($"🟢 BuyCondition2 Debug -> Current Bar: {currentBarIndex}, Triggered Bar: {_buyCondition2TriggeredBarIndex}, Candles Passed: {candlesPassed}, Time Since Trigger: {timeSinceTrigger.TotalMinutes} min");
+
                 if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Check for 4 bars after trigger
                 {
                     if (Bars.ClosePrices.Last(1) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize
                         && Bars.ClosePrices.Last(1) > Bars.OpenPrices.Last(1)) // Ensure bullish close
                     {
+                        Print($"✅ Buy trade executed at {Bars.ClosePrices.Last(1)} (Trigger: {_baseCandleBuyCondition2.Value.High})");
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
                         _buyCondition2Executed = true;
                         _buyCondition2Triggered = false;
                         _buyCondition2TriggeredBarIndex = -1;
                         _macdBuyConditionValid = false;
                         _baseCandleBuyCondition2 = null;
-                        Print($"✅ Buy trade executed at {Bars.ClosePrices.Last(1)} based on Condition2.");
                         return;
                     }
                 }
 
-                // ✅ Expiry should ONLY happen after 4 candles OR 20 minutes
                 if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
                 {
-                    Print($"⏳ BuyCondition2 expired at {Server.Time}. Resetting flags.");
+                    Print($"⏳ BuyCondition2 expired at {Server.Time}. Resetting flags. Candles Passed: {candlesPassed}, Time: {timeSinceTrigger.TotalMinutes} min");
                     _buyCondition2Executed = false;
                     _buyCondition2Triggered = false;
                     _buyCondition2TriggeredBarIndex = -1;
@@ -885,26 +886,27 @@ namespace cAlgo.Robots
                 int candlesPassed = currentBarIndex - _sellCondition2TriggeredBarIndex;
                 TimeSpan timeSinceTrigger = Server.Time - _sellCondition2Start;
 
+                Print($"🔴 SellCondition2 Debug -> Current Bar: {currentBarIndex}, Triggered Bar: {_sellCondition2TriggeredBarIndex}, Candles Passed: {candlesPassed}, Time Since Trigger: {timeSinceTrigger.TotalMinutes} min");
+
                 if (candlesPassed >= 1 && candlesPassed <= 4) // ✅ Check for 4 bars after trigger
                 {
                     if (Bars.ClosePrices.Last(1) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize
                         && Bars.ClosePrices.Last(1) < Bars.OpenPrices.Last(1)) // Ensure bearish close
                     {
+                        Print($"✅ Sell trade executed at {Bars.ClosePrices.Last(1)} (Trigger: {_baseCandleSellCondition2.Value.Low})");
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
                         _sellCondition2Executed = true;
                         _sellCondition2Triggered = false;
                         _sellCondition2TriggeredBarIndex = -1;
                         _macdSellConditionValid = false;
                         _baseCandleSellCondition2 = null;
-                        Print($"✅ Sell trade executed at {Bars.ClosePrices.Last(1)} based on Condition2.");
                         return;
                     }
                 }
 
-                // ✅ Expiry should ONLY happen after 4 candles OR 20 minutes
                 if (candlesPassed >= 4 || timeSinceTrigger >= TimeSpan.FromMinutes(20))
                 {
-                    Print($"⏳ SellCondition2 expired at {Server.Time}. Resetting flags.");
+                    Print($"⏳ SellCondition2 expired at {Server.Time}. Resetting flags. Candles Passed: {candlesPassed}, Time: {timeSinceTrigger.TotalMinutes} min");
                     _sellCondition2Executed = false;
                     _sellCondition2Triggered = false;
                     _sellCondition2TriggeredBarIndex = -1;
