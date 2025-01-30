@@ -881,17 +881,17 @@ namespace cAlgo.Robots
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered)
             {
-                // ✅ Prevent executing more than 1 trade per base candle within 4 bars
+                // ✅ Ensure only 1 trade within the 4-bar window
                 if (_buyCondition2Executed)
                 {
                     if (currentBarIndex < _buyCondition2TriggeredBarIndex + 4)
                     {
-                        return; // Stop checking, wait for 4 candles
+                        return; // Stop checking for trades in this period
                     }
                 }
 
-                // ✅ Loop through next 4 candles ONLY
-                for (int i = 1; i <= 4; i++)
+                // ✅ Loop through next 3 candles ONLY (skip the 4th candle)
+                for (int i = 1; i <= 3; i++)
                 {
                     if (currentBarIndex < _buyCondition2TriggeredBarIndex + i)
                         break;
@@ -899,17 +899,17 @@ namespace cAlgo.Robots
                     if (_baseCandleBuyCondition2.HasValue && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
-                        _buyCondition2Executed = true;  // ✅ Block new trades for this period
+                        _buyCondition2Executed = true;
                         _buyCondition2ExecutedBarIndex = currentBarIndex;
                         Print($"✅ Buy trade executed based on Condition2 at price: {Bars.ClosePrices.Last(i)}");
                         break; // Exit loop once trade is placed
                     }
                 }
 
-                // ✅ After 4 candles, reset flags (whether trade executed or not)
-                if (currentBarIndex >= _buyCondition2TriggeredBarIndex + 4)
+                // ✅ Reset flags AFTER 3 bars (not after 4)
+                if (currentBarIndex >= _buyCondition2TriggeredBarIndex + 3)
                 {
-                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting flags to allow new signals.");
+                    Print("⏳ BuyCondition2 expired after 3 candles. Resetting flags to allow new signals.");
                     _buyCondition2Executed = false;  
                     _buyCondition2Triggered = false;
                     _macdBuyConditionValid = false;
@@ -920,15 +920,17 @@ namespace cAlgo.Robots
             // ✅ Check SellCondition2 Trigger
             if (_sellCondition2Triggered)
             {
+                // ✅ Ensure only 1 trade within the 4-bar window
                 if (_sellCondition2Executed)
                 {
                     if (currentBarIndex < _sellCondition2TriggeredBarIndex + 4)
                     {
-                        return; // Stop checking, wait for 4 candles
+                        return; // Stop checking for trades in this period
                     }
                 }
 
-                for (int i = 1; i <= 4; i++)
+                // ✅ Loop through next 3 candles ONLY (skip the 4th candle)
+                for (int i = 1; i <= 3; i++)
                 {
                     if (currentBarIndex < _sellCondition2TriggeredBarIndex + i)
                         break;
@@ -943,9 +945,10 @@ namespace cAlgo.Robots
                     }
                 }
 
-                if (currentBarIndex >= _sellCondition2TriggeredBarIndex + 4)
+                // ✅ Reset flags AFTER 3 bars (not after 4)
+                if (currentBarIndex >= _sellCondition2TriggeredBarIndex + 3)
                 {
-                    Print("⏳ SellCondition2 expired after 4 candles. Resetting flags to allow new signals.");
+                    Print("⏳ SellCondition2 expired after 3 candles. Resetting flags to allow new signals.");
                     _sellCondition2Executed = false;  
                     _sellCondition2Triggered = false;
                     _macdSellConditionValid = false;
