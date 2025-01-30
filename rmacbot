@@ -873,7 +873,7 @@ namespace cAlgo.Robots
             }
 
             // ✅ Check BuyCondition2 Trigger
-            if (_buyCondition2Triggered && !_buyCondition2Executed)
+            if (_buyCondition2Triggered)
             {
                 bool tradeExecuted = false;
 
@@ -881,7 +881,7 @@ namespace cAlgo.Robots
                 for (int i = 1; i <= 4; i++)
                 {
                     if (currentBarIndex < _buyCondition2TriggeredBarIndex + i)
-                        break;
+                        break; // Ensure we only check the next 4 bars
 
                     if (_baseCandleBuyCondition2.HasValue && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
@@ -897,10 +897,11 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ Reset if no trade happened within 4 candles, allowing new MACD checks
-                if (!tradeExecuted && currentBarIndex >= _buyCondition2TriggeredBarIndex + 4)
+                // ✅ After 4 candles, reset the execution flag (whether trade executed or not)
+                if (currentBarIndex >= _buyCondition2TriggeredBarIndex + 4)
                 {
-                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting to allow new MACD condition.");
+                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting flags to allow new signals.");
+                    _buyCondition2Executed = false;  // ✅ Reset executed flag to allow new trades
                     _buyCondition2Triggered = false;
                     _macdBuyConditionValid = false;
                     _baseCandleBuyCondition2 = null;
@@ -908,7 +909,7 @@ namespace cAlgo.Robots
             }
 
             // ✅ Check SellCondition2 Trigger
-            if (_sellCondition2Triggered && !_sellCondition2Executed)
+            if (_sellCondition2Triggered)
             {
                 bool tradeExecuted = false;
 
@@ -916,7 +917,7 @@ namespace cAlgo.Robots
                 for (int i = 1; i <= 4; i++)
                 {
                     if (currentBarIndex < _sellCondition2TriggeredBarIndex + i)
-                        break;
+                        break; // Ensure we only check the next 4 bars
 
                     if (_baseCandleSellCondition2.HasValue && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
                     {
@@ -932,16 +933,19 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ Reset if no trade happened within 4 candles, allowing new MACD checks
-                if (!tradeExecuted && currentBarIndex >= _sellCondition2TriggeredBarIndex + 4)
+                // ✅ After 4 candles, reset the execution flag (whether trade executed or not)
+                if (currentBarIndex >= _sellCondition2TriggeredBarIndex + 4)
                 {
-                    Print("⏳ SellCondition2 expired after 4 candles. Resetting to allow new MACD condition.");
+                    Print("⏳ SellCondition2 expired after 4 candles. Resetting flags to allow new signals.");
+                    _sellCondition2Executed = false;  // ✅ Reset executed flag to allow new trades
                     _sellCondition2Triggered = false;
                     _macdSellConditionValid = false;
                     _baseCandleSellCondition2 = null;
                 }
             }
         }
+
+
 
         private void ResetBuyCondition2Flags()
         {
