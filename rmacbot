@@ -938,7 +938,18 @@ namespace cAlgo.Robots
                 return;
             }
 
-            int baseCandleIndex = _buyCondition2TriggeredBarIndex; // Use stored index
+            int baseCandleIndex = -1;
+
+            // ✅ Find the base candle index manually
+            for (int i = Bars.Count - 1; i >= 1; i--)
+            {
+                if (Bars[i].OpenTime == baseCandle.OpenTime)
+                {
+                    baseCandleIndex = i;
+                    break;
+                }
+            }
+
             if (baseCandleIndex < 1) 
             {
                 Print("Not enough bars to determine stop loss. Trade not executed.");
@@ -948,6 +959,10 @@ namespace cAlgo.Robots
             // ✅ Get the candle BEFORE the base candle
             Bar previousCandle = Bars[baseCandleIndex - 1];
 
+            // ✅ Log candle details to verify correct selection
+            Print($"🔍 Base Candle (Buy): Time={baseCandle.OpenTime}, High={baseCandle.High}, Low={baseCandle.Low}");
+            Print($"🔍 Previous Candle (Buy): Time={previousCandle.OpenTime}, High={previousCandle.High}, Low={previousCandle.Low}");
+
             // ✅ Stop Loss should be placed BELOW the lowest low between these two candles
             double stopLossPrice = Math.Min(baseCandle.Low, previousCandle.Low) - Symbol.PipSize - Symbol.Spread;
             double entryPrice = Bars.ClosePrices.Last(1);
@@ -955,7 +970,7 @@ namespace cAlgo.Robots
 
             if (stopLossPips <= 0 || double.IsNaN(stopLossPips) || stopLossPips < Symbol.Spread / Symbol.PipSize)
             {
-                Print("Invalid stop loss calculation for BuyCondition2.");
+                Print("❌ Invalid stop loss calculation for BuyCondition2.");
                 return;
             }
 
@@ -964,7 +979,7 @@ namespace cAlgo.Robots
 
             if (double.IsNaN(volume) || volume <= 0)
             {
-                Print("Invalid volume calculation for BuyCondition2.");
+                Print("❌ Invalid volume calculation for BuyCondition2.");
                 return;
             }
 
@@ -982,7 +997,18 @@ namespace cAlgo.Robots
                 return;
             }
 
-            int baseCandleIndex = _sellCondition2TriggeredBarIndex; // Use stored index
+            int baseCandleIndex = -1;
+
+            // ✅ Find the base candle index manually
+            for (int i = Bars.Count - 1; i >= 1; i--)
+            {
+                if (Bars[i].OpenTime == baseCandle.OpenTime)
+                {
+                    baseCandleIndex = i;
+                    break;
+                }
+            }
+
             if (baseCandleIndex < 1) 
             {
                 Print("Not enough bars to determine stop loss. Trade not executed.");
@@ -992,6 +1018,10 @@ namespace cAlgo.Robots
             // ✅ Get the candle BEFORE the base candle
             Bar previousCandle = Bars[baseCandleIndex - 1];
 
+            // ✅ Log candle details to verify correct selection
+            Print($"🔍 Base Candle (Sell): Time={baseCandle.OpenTime}, High={baseCandle.High}, Low={baseCandle.Low}");
+            Print($"🔍 Previous Candle (Sell): Time={previousCandle.OpenTime}, High={previousCandle.High}, Low={previousCandle.Low}");
+
             // ✅ Stop Loss should be placed ABOVE the highest high between these two candles
             double stopLossPrice = Math.Max(baseCandle.High, previousCandle.High) + Symbol.PipSize + Symbol.Spread;
             double entryPrice = Bars.ClosePrices.Last(1);
@@ -999,7 +1029,7 @@ namespace cAlgo.Robots
 
             if (stopLossPips <= 0 || double.IsNaN(stopLossPips) || stopLossPips < Symbol.Spread / Symbol.PipSize)
             {
-                Print("Invalid stop loss calculation for SellCondition2.");
+                Print("❌ Invalid stop loss calculation for SellCondition2.");
                 return;
             }
 
@@ -1008,13 +1038,14 @@ namespace cAlgo.Robots
 
             if (double.IsNaN(volume) || volume <= 0)
             {
-                Print("Invalid volume calculation for SellCondition2.");
+                Print("❌ Invalid volume calculation for SellCondition2.");
                 return;
             }
 
             ExecuteMarketOrder(TradeType.Sell, Symbol.Name, volume, "SellCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
             Print($"✅ SellCondition2 trade executed. Entry: {entryPrice}, SL: {stopLossPrice}, TP: {takeProfitPips * Symbol.PipSize}");
         }
+
 
 
 
