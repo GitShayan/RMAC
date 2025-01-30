@@ -27,6 +27,9 @@ namespace cAlgo.Robots
         [Parameter("Take Profit Multiplier2", DefaultValue = 1.0)]
         public double TakeProfitMultiplier2 { get; set; }
 
+        [Parameter("One Trade Per Day Condition2", DefaultValue = false)]
+        public bool OneTradePerDayCondition2 { get; set; }
+
 
         [Parameter("Prevention MACD Level", DefaultValue = 20)]
         public double PreventionMACDLevel { get; set; }
@@ -774,9 +777,10 @@ namespace cAlgo.Robots
             }
         }
 
+
         private void CheckBuyCondition2AndSellCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Current bar index
+            int currentBarIndex = Bars.Count - 1;
 
             // ✅ Ensure the bot only evaluates trades inside active trading hours
             if (Server.Time.TimeOfDay < _parsedActiveStartTime || Server.Time.TimeOfDay > _parsedActiveEndTime)
@@ -794,10 +798,10 @@ namespace cAlgo.Robots
             }
 
             // ✅ Check BuyCondition2 trigger conditions
-            if (_sellDisabledToday && !_buyCondition2Triggered && !_buyCondition2Executed)
+            if (_sellDisabledToday && !_buyCondition2Triggered)
             {
                 bool macdBreached = false;
-                
+
                 // ✅ Ensure MACD did not go below prevention level at any time before triggering
                 for (int i = Bars.Count - 1; i >= 0 && Bars.OpenTimes[i].Date == Server.Time.Date; i--)
                 {
@@ -825,7 +829,7 @@ namespace cAlgo.Robots
             }
 
             // ✅ Check SellCondition2 trigger conditions
-            if (_buyDisabledToday && !_sellCondition2Triggered && !_sellCondition2Executed)
+            if (_buyDisabledToday && !_sellCondition2Triggered)
             {
                 bool macdBreached = false;
 
@@ -860,7 +864,13 @@ namespace cAlgo.Robots
 
         private void CheckTradeTriggersCondition2()
         {
-            int currentBarIndex = Bars.Count - 1; // Current bar index
+            int currentBarIndex = Bars.Count - 1;
+
+            // ✅ If "One Trade Per Day" is enabled and trade already executed, stop checking.
+            if (OneTradePerDayCondition2 && (_buyCondition2Executed || _sellCondition2Executed))
+            {
+                return;
+            }
 
             // ✅ Check BuyCondition2 Trigger
             if (_buyCondition2Triggered && !_buyCondition2Executed)
@@ -871,14 +881,13 @@ namespace cAlgo.Robots
                 for (int i = 1; i <= 4; i++)
                 {
                     if (currentBarIndex < _buyCondition2TriggeredBarIndex + i)
-                        break; // Ensure we only check next 4 bars
+                        break;
 
-                    if (_baseCandleBuyCondition2.HasValue 
-                        && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
+                    if (_baseCandleBuyCondition2.HasValue && Bars.ClosePrices.Last(i) > _baseCandleBuyCondition2.Value.High + Symbol.PipSize) 
                     {
                         PlaceBuyOrderCondition2(_baseCandleBuyCondition2.Value);
                         _buyCondition2Executed = true;
-                        _buyCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _buyCondition2ExecutedBarIndex = currentBarIndex;
                         _buyCondition2Triggered = false;
                         _macdBuyConditionValid = false;
                         _baseCandleBuyCondition2 = null;
@@ -888,11 +897,10 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ If no trade happened in 4 candles, RESET and wait for a new valid MACD condition
+                // ✅ Reset if no trade happened within 4 candles, allowing new MACD checks
                 if (!tradeExecuted && currentBarIndex >= _buyCondition2TriggeredBarIndex + 4)
                 {
-                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting flags and waiting for new MACD confirmation.");
-                    _buyCondition2Executed = false;
+                    Print("⏳ BuyCondition2 expired after 4 candles. Resetting to allow new MACD condition.");
                     _buyCondition2Triggered = false;
                     _macdBuyConditionValid = false;
                     _baseCandleBuyCondition2 = null;
@@ -908,14 +916,13 @@ namespace cAlgo.Robots
                 for (int i = 1; i <= 4; i++)
                 {
                     if (currentBarIndex < _sellCondition2TriggeredBarIndex + i)
-                        break; // Ensure we only check next 4 bars
+                        break;
 
-                    if (_baseCandleSellCondition2.HasValue 
-                        && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
+                    if (_baseCandleSellCondition2.HasValue && Bars.ClosePrices.Last(i) < _baseCandleSellCondition2.Value.Low - Symbol.PipSize) 
                     {
                         PlaceSellOrderCondition2(_baseCandleSellCondition2.Value);
                         _sellCondition2Executed = true;
-                        _sellCondition2ExecutedBarIndex = currentBarIndex; // Store execution index
+                        _sellCondition2ExecutedBarIndex = currentBarIndex;
                         _sellCondition2Triggered = false;
                         _macdSellConditionValid = false;
                         _baseCandleSellCondition2 = null;
@@ -925,18 +932,16 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // ✅ If no trade happened in 4 candles, RESET and wait for a new valid MACD condition
+                // ✅ Reset if no trade happened within 4 candles, allowing new MACD checks
                 if (!tradeExecuted && currentBarIndex >= _sellCondition2TriggeredBarIndex + 4)
                 {
-                    Print("⏳ SellCondition2 expired after 4 candles. Resetting flags and waiting for new MACD confirmation.");
-                    _sellCondition2Executed = false;
+                    Print("⏳ SellCondition2 expired after 4 candles. Resetting to allow new MACD condition.");
                     _sellCondition2Triggered = false;
                     _macdSellConditionValid = false;
                     _baseCandleSellCondition2 = null;
                 }
             }
         }
-
 
         private void ResetBuyCondition2Flags()
         {
