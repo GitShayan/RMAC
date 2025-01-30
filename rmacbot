@@ -101,8 +101,6 @@ namespace cAlgo.Robots
         private Bar? _baseCandleSellCondition2;
         private bool _buyCondition2Triggered = false;
         private bool _sellCondition2Triggered = false;
-        private DateTime _buyCondition2Start;
-        private DateTime _sellCondition2Start;
         private bool _macdBuyConditionValid = false;
         private bool _macdSellConditionValid = false;
         private bool _outsideActiveHoursLogged = false;
@@ -866,6 +864,7 @@ namespace cAlgo.Robots
                 }
             }
         }
+
 
 
 
