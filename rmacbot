@@ -933,15 +933,23 @@ namespace cAlgo.Robots
       
         private void PlaceBuyOrderCondition2(Bar baseCandle)
         {
-            // Check if baseCandle is null
             if (baseCandle == null)
             {
                 Print("Base candle for BuyCondition2 is null. Trade not executed.");
                 return;
             }
 
-            // Accessing baseCandle properties
-            double stopLossPrice = baseCandle.Low - Symbol.PipSize - Symbol.Spread;
+            int baseCandleIndex = Bars.Count - 1;
+            if (baseCandleIndex < 1) 
+            {
+                Print("Not enough bars to determine stop loss. Trade not executed.");
+                return;
+            }
+
+            Bar previousCandle = Bars[baseCandleIndex - 1];
+
+            // ✅ Stop Loss should be placed BELOW the lowest low between the base candle and the previous candle
+            double stopLossPrice = Math.Min(baseCandle.Low, previousCandle.Low) - Symbol.PipSize - Symbol.Spread;
             double entryPrice = Bars.ClosePrices.Last(1);
             double stopLossPips = (entryPrice - stopLossPrice) / Symbol.PipSize;
 
@@ -961,21 +969,30 @@ namespace cAlgo.Robots
             }
 
             ExecuteMarketOrder(TradeType.Buy, Symbol.Name, volume, "BuyCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
-            Print("BuyCondition2 trade executed.");
+            Print($"✅ BuyCondition2 trade executed. Entry: {entryPrice}, SL: {stopLossPrice}, TP: {takeProfitPips * Symbol.PipSize}");
         }
+
 
 
         private void PlaceSellOrderCondition2(Bar baseCandle)
         {
-            // Check if baseCandle is null
             if (baseCandle == null)
             {
                 Print("Base candle for SellCondition2 is null. Trade not executed.");
                 return;
             }
 
-            // Accessing baseCandle properties
-            double stopLossPrice = baseCandle.High + Symbol.PipSize + Symbol.Spread;
+            int baseCandleIndex = Bars.Count - 1;
+            if (baseCandleIndex < 1) 
+            {
+                Print("Not enough bars to determine stop loss. Trade not executed.");
+                return;
+            }
+
+            Bar previousCandle = Bars[baseCandleIndex - 1];
+
+            // ✅ Stop Loss should be placed ABOVE the highest high between the base candle and the previous candle
+            double stopLossPrice = Math.Max(baseCandle.High, previousCandle.High) + Symbol.PipSize + Symbol.Spread;
             double entryPrice = Bars.ClosePrices.Last(1);
             double stopLossPips = (stopLossPrice - entryPrice) / Symbol.PipSize;
 
@@ -995,8 +1012,9 @@ namespace cAlgo.Robots
             }
 
             ExecuteMarketOrder(TradeType.Sell, Symbol.Name, volume, "SellCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
-            Print("SellCondition2 trade executed.");
+            Print($"✅ SellCondition2 trade executed. Entry: {entryPrice}, SL: {stopLossPrice}, TP: {takeProfitPips * Symbol.PipSize}");
         }
+
 
 
         private double CalculateVolumeCondition2(double stopLossPips)
