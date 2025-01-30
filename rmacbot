@@ -912,7 +912,6 @@ namespace cAlgo.Robots
 
 
 
-
         private void ResetBuyCondition2Flags()
         {
             _buyCondition2Executed = false;
@@ -939,7 +938,7 @@ namespace cAlgo.Robots
                 return;
             }
 
-            int baseCandleIndex = Bars.IndexOf(baseCandle);
+            int baseCandleIndex = _buyCondition2TriggeredBarIndex; // Use stored index
             if (baseCandleIndex < 1) 
             {
                 Print("Not enough bars to determine stop loss. Trade not executed.");
@@ -983,7 +982,7 @@ namespace cAlgo.Robots
                 return;
             }
 
-            int baseCandleIndex = Bars.IndexOf(baseCandle);
+            int baseCandleIndex = _sellCondition2TriggeredBarIndex; // Use stored index
             if (baseCandleIndex < 1) 
             {
                 Print("Not enough bars to determine stop loss. Trade not executed.");
@@ -1016,7 +1015,6 @@ namespace cAlgo.Robots
             ExecuteMarketOrder(TradeType.Sell, Symbol.Name, volume, "SellCondition2_" + Server.Time.ToString("yyyyMMdd_HHmmss"), stopLossPips, takeProfitPips);
             Print($"✅ SellCondition2 trade executed. Entry: {entryPrice}, SL: {stopLossPrice}, TP: {takeProfitPips * Symbol.PipSize}");
         }
-
 
 
 
