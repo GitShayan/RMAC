@@ -101,6 +101,8 @@ namespace cAlgo.Robots
         private Bar? _baseCandleSellCondition2;
         private bool _buyCondition2Triggered = false;
         private bool _sellCondition2Triggered = false;
+        private double? _triggerPrice = null;
+
         private bool _macdBuyConditionValid = false;
         private bool _macdSellConditionValid = false;
         private bool _outsideActiveHoursLogged = false;
